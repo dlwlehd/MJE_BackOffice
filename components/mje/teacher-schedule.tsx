@@ -2,18 +2,20 @@
 import {useState} from 'react';
 import {ArrowUp,ArrowDown,Plus,Users,Save,X,ArrowUpRight} from 'lucide-react';
 import {Button} from '@/components/ui/button';
-import {type DemoData,dutyTeacher,validateTeacherOrder,staffNames,saturday,shift,dateLabel} from '@/lib/model';
+import {type DemoData,dutyTeacher,validateTeacherOrder,saturday,shift,dateLabel} from '@/lib/model';
 import {TextField,Pick,ErrorMessage,Status} from './shared';
 
-export default function TeacherSchedule({data,onSave,onOpenMakeup,initialDate}:{data:DemoData;onSave:(date:string,teachers:string[])=>void;onOpenMakeup:(date:string)=>void;initialDate:string}){
+export default function TeacherSchedule({data,onSave,onOpenMakeup,initialDate,onAddTeacher}:{data:DemoData;onAddTeacher:(name:string)=>void;onSave:(date:string,teachers:string[])=>void;onOpenMakeup:(date:string)=>void;initialDate:string}){
  const rule=[...data.teacherRotations].filter(r=>r.startDate<=initialDate).sort((a,b)=>b.startDate.localeCompare(a.startDate))[0];
- const [date,setDate]=useState(initialDate),[teachers,setTeachers]=useState(rule?.teachers??[...staffNames]),[picked,setPicked]=useState(''),[error,setError]=useState('');
- const available=staffNames.filter(n=>!teachers.includes(n));
- const preview={teacherRotations:[...data.teacherRotations.filter(r=>r.startDate!==date),{startDate:date,teachers}]};
+ const [date,setDate]=useState(initialDate),[teachers,setTeachers]=useState(rule?.teachers??[...data.teachers]),[picked,setPicked]=useState(''),[error,setError]=useState('');
+ const [name,setName]=useState(''),[registrationError,setRegistrationError]=useState('');
+ const available=data.teachers.filter(n=>!teachers.includes(n));
+ const preview={teacherOverrides:data.teacherOverrides,teacherRotations:[...data.teacherRotations.filter(r=>r.startDate!==date),{startDate:date,teachers}]};
  function move(index:number,to:number){const next=[...teachers];[next[index],next[to]]=[next[to],next[index]];setTeachers(next)}
- function save(){try{validateTeacherOrder(date,teachers);onSave(date,teachers);setError('')}catch(e){setError((e as Error).message)}}
+ function save(){try{validateTeacherOrder(date,teachers,data.teachers);onSave(date,teachers);setError('')}catch(e){setError((e as Error).message)}}
  return <>
   <div className="page-heading"><div><h1>보강 스케줄</h1><p>토요일마다 한 명의 선생님이 담당하고, 정해진 순서대로 매주 교대합니다.</p></div><Button onClick={save}><Save/>로테이션 저장</Button></div>
+  <section className="teacher-registration" aria-label="선생님 등록"><div><h2>선생님 등록</h2><p>등록한 선생님은 당일 담당 변경, 로테이션, 학사 일정과 상담에서 선택할 수 있습니다.</p></div><form onSubmit={e=>{e.preventDefault();try{onAddTeacher(name);setName('');setRegistrationError('')}catch(e){setRegistrationError((e as Error).message)}}}><TextField label="새 선생님 이름" value={name} onChange={setName}/><Button type="submit"><Plus/>선생님 등록</Button></form><ErrorMessage message={registrationError}/><div className="registered-teachers">{data.teachers.map(n=><Status key={n}>{n} 선생님</Status>)}</div><p>등록 후 아래 로테이션에 추가하거나, 토요 보강에서 당일 담당으로 지정하세요.</p></section>
   <div className="schedule-layout">
    <section className="schedule-editor" aria-label="주간 로테이션 설정">
     <div className="schedule-section-title"><div><h2><Users size={18}/>교사 로테이션</h2><p>첫 번째 선생님부터 시작해 마지막 순서 후 다시 반복합니다.</p></div></div>
@@ -29,7 +31,7 @@ export default function TeacherSchedule({data,onSave,onOpenMakeup,initialDate}:{
     <ErrorMessage message={error}/>
     <div className="schedule-editor-footer"><Button variant="outline" onClick={()=>onOpenMakeup(initialDate)}>토요 보강 보기<ArrowUpRight/></Button><Button onClick={save}>로테이션 저장</Button></div>
    </section>
-   <aside className="schedule-month" aria-label="주간 담당 미리보기"><h2>앞으로 8주 미리보기</h2><p>저장할 순서를 미리 확인하세요. 하루 담당은 1명입니다.</p><div className="schedule-date-list">{Array.from({length:8},(_,i)=>shift(saturday(/^\d{4}-\d{2}-\d{2}$/.test(date)?date:initialDate),i*7)).map(s=><div key={s} className="schedule-date-item"><div><strong>{dateLabel(s)}</strong><Status tone="reserved">1명 담당</Status></div><p>{dutyTeacher(preview,s)||'미배정'} 선생님</p><small>현재 저장: {dutyTeacher(data,s)||'미배정'}</small></div>)}</div></aside>
+   <aside className="schedule-month" aria-label="주간 담당 미리보기"><h2>앞으로 8주 미리보기</h2><p>저장할 순서를 미리 확인하세요. 하루 담당은 1명입니다.</p><div className="schedule-date-list">{Array.from({length:8},(_,i)=>shift(saturday(/^\d{4}-\d{2}-\d{2}$/.test(date)?date:initialDate),i*7)).map(s=><div key={s} className="schedule-date-item"><div><strong>{dateLabel(s)}</strong><Status tone={data.teacherOverrides[s]?'warning':'reserved'}>{data.teacherOverrides[s]?'당일 변경':'1명 담당'}</Status></div><p>{dutyTeacher(preview,s)||'미배정'} 선생님</p><small>현재 저장: {dutyTeacher(data,s)||'미배정'}</small></div>)}</div></aside>
   </div>
  </>;
 }

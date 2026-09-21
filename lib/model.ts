@@ -6,7 +6,7 @@ export type Consultation = {id:string; subjectId:string; target:string; type:'�
 export type Audit = {id:string; at:string; entity:string; action:string; before:unknown; after:unknown};
 export type Archive = {id:string; date:string; at:string; sessions:(Makeup & {studentName:string})[]};
 export type TeacherRotation = {startDate:string; teachers:string[]};
-export type DemoData = {version:1; revision:number; events:AcademicEvent[]; subjects:Subject[]; makeups:Makeup[]; consultations:Consultation[]; archives:Archive[]; audit:Audit[]; teacherSchedules:Record<string,string[]>; teacherRotations:TeacherRotation[]};
+export type DemoData = {version:1; revision:number; events:AcademicEvent[]; subjects:Subject[]; makeups:Makeup[]; consultations:Consultation[]; archives:Archive[]; audit:Audit[]; teacherSchedules:Record<string,string[]>; teacherRotations:TeacherRotation[]; teachers:string[]; teacherOverrides:Record<string,string>};
 export const categoryLabels:Record<Category,string>={exam:'학교 시험',vacation:'학원 방학',test:'Test',event:'학원 행사',other:'기타'};
 export const staffNames=['정지민','이수빈','김민서'];
 export function today(){return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul'}).format(new Date());}
@@ -33,29 +33,31 @@ export function makeSeed():DemoData{
  const events=[event('e1','매탄중 중간고사','exam',month+'-14',month+'-16',{school:'매탄중',audience:'2·3학년',note:'시험 기간 집중 학습 계획을 확인해 주세요.'}),event('e2','엠제이 방학','vacation',month+'-25',month+'-27',{note:'학원 전체 휴무 예시입니다.'}),event('e3','레벨 Test','test',month+'-07',month+'-07',{allDay:false,startTime:'15:00',endTime:'16:00'}),event('e4','레벨 Test','test',month+'-19',month+'-19',{allDay:false,startTime:'16:30',endTime:'17:30'}),event('e5','월말 Test','test',month+'-28',month+'-28',{allDay:false,startTime:'16:00',endTime:'17:00'}),event('e6','학부모 설명회','event',t,t,{allDay:false,startTime:'14:00',endTime:'15:00',location:'엠제이 세미나실'}),event('e7','신학기 안내','event',t,t,{allDay:false,startTime:'16:00',endTime:'17:00'}),event('e8','겨울 학습 계획','event',y+'-12-21',y+'-12-21',{tentative:true}),event('e9','겨울방학 특강','event',y+'-01-05',y+'-01-30'),event('e10','새 학기 레벨 Test','test',y+'-03-02'),event('e11','매탄중 기말고사','exam',y+'-07-06',y+'-07-08',{school:'매탄중'}),event('e12','여름 방학','vacation',y+'-08-03',y+'-08-07')];
  const makeups:Makeup[]=subjects.slice(0,6).map((s,i)=>({...blankMakeup(sat),id:'m'+i,studentId:s.id,start:i<3?'10:00':'11:00',end:i===0?'12:30':i<3?'12:00':'13:00',staff:staffNames[0],kind:i===1?'정기':'보강',attendance:i>1?'출석':'미체크',task:['독해 오답 정리','문법 4단원 복습','단어 테스트'][i%3],completed:i===5,result:i===5?'오답 정리와 단어 테스트를 완료했습니다.':'',note:i===0?'독해 지문 2개 추가 연습':''}));
  const consultations:Consultation[]=[{...blankConsultation(mon),id:'c1',subjectId:'s7',target:'윤서하 보호자',type:'신규 상담',staff:'이수빈',start:'14:00',end:'14:30',topic:'입학 상담 및 레벨 테스트 안내'},{...blankConsultation(mon),id:'c2',subjectId:'s1',target:'박은서 보호자',topic:'중간고사 학습 방향'},{...blankConsultation(mon),id:'c3',subjectId:'s2',target:'최도현',type:'학생 상담',staff:'이수빈',start:'16:00',end:'16:20',topic:'독해 학습 습관 점검'},{...blankConsultation(shift(mon,2)),id:'c4',subjectId:'s3',target:'서하린 보호자',topic:'학습 적응 현황',staff:'김민서'},{...blankConsultation(shift(mon,3)),id:'c5',subjectId:'s8',target:'임지호 보호자',type:'신규 상담',staff:'이수빈',status:'취소',reason:'보호자 일정 변경',topic:'신규 입학 안내'},{...blankConsultation(shift(mon,-28)),id:'c6',subjectId:'s1',target:'박은서 보호자',status:'완료',draft:false,content:'독해 속도와 가정 학습 습관을 함께 점검했습니다.',summary:'매일 20분 독해 연습과 주 3회 단어 복습에 합의했습니다.',agreement:'가정에서 학습 시간을 기록합니다.',followUp:'다음 상담에서 학습 기록 확인',due:mon,topic:'학습 습관 상담'}];
- return {version:1,revision:0,events,subjects,makeups,consultations,archives:[],audit:[],teacherSchedules:{},teacherRotations:[{startDate:sat,teachers:[...staffNames]}]};
+ return {version:1,revision:0,events,subjects,makeups,consultations,archives:[],audit:[],teachers:[...staffNames],teacherOverrides:{},teacherSchedules:{},teacherRotations:[{startDate:sat,teachers:[...staffNames]}]};
 }
 
 
 // Rules apply from their start date; later rules preserve earlier weekly assignments.
-export function dutyTeacher(data:Pick<DemoData,'teacherRotations'>,date:string):string{
+export function dutyTeacher(data:Pick<DemoData,'teacherRotations'> & Partial<Pick<DemoData,'teacherOverrides'>>,date:string):string{
  if(!validDate(date)||dayDate(date).getDay()!==6)return '';
+ if(data.teacherOverrides?.[date])return data.teacherOverrides[date];
  const rule=[...data.teacherRotations].filter(r=>r.startDate<=date).sort((a,b)=>b.startDate.localeCompare(a.startDate))[0];
  if(!rule?.teachers.length)return '';
  const weeks=Math.floor((Date.parse(date+'T00:00:00Z')-Date.parse(rule.startDate+'T00:00:00Z'))/604800000);
  return rule.teachers[weeks%rule.teachers.length];
 }
 export function migrateDemo(value:DemoData):DemoData{
+ value={...value,teachers:value.teachers??[...staffNames],teacherOverrides:value.teacherOverrides??{}};
  if(value.teacherRotations)return value;
  const legacy=Object.entries(value.teacherSchedules??{}).filter(([date,names])=>validDate(date)&&dayDate(date).getDay()===6&&names.length).sort(([a],[b])=>a.localeCompare(b));
  const startDate=legacy[0]?.[0]||value.makeups.map(m=>m.date).filter(d=>validDate(d)&&dayDate(d).getDay()===6).sort()[0]||saturday();
  const teachers=legacy[0]?.[1].filter(n=>staffNames.includes(n))||staffNames;
  return {...value,teacherSchedules:value.teacherSchedules??{},teacherRotations:[{startDate,teachers:teachers.length?[...new Set(teachers)]:[...staffNames]}]};
 }
-export function validateTeacherOrder(date:string,teachers:string[]){
+export function validateTeacherOrder(date:string,teachers:string[],registered=staffNames){
  if(!validDate(date)||dayDate(date).getDay()!==6)throw Error('보강 스케줄은 토요일만 선택할 수 있습니다.');
  if(!teachers.length)throw Error('로테이션에 참여할 선생님을 한 명 이상 선택해 주세요.');
- if(new Set(teachers).size!==teachers.length||teachers.some(n=>!staffNames.includes(n)))throw Error('담당 선생님을 중복 없이 선택해 주세요.');
+ if(new Set(teachers).size!==teachers.length||teachers.some(n=>!registered.includes(n)))throw Error('담당 선생님을 중복 없이 선택해 주세요.');
 }
 export function consultationState(c:Consultation,now=Date.now()){
  if(c.status==='완료')return {label:'기록 완료',tone:'success'};
@@ -64,4 +66,18 @@ export function consultationState(c:Consultation,now=Date.now()){
  if(c.origin==='direct')return {label:'작성 중',tone:'warning'};
  if(new Date(c.date+'T'+c.end+':00+09:00').getTime()<now)return {label:'결과 미기록',tone:'warning'};
  return {label:'예약',tone:'reserved'};
+}
+
+export function registerTeacher(data:DemoData,name:string):DemoData{
+ const clean=name.trim();
+ if(!clean||clean.length>40)throw Error('선생님 이름을 1~40자로 입력해 주세요.');
+ if(data.teachers.some(n=>n.normalize('NFC')===clean.normalize('NFC')))throw Error('이미 등록된 이름입니다. 동명이인은 구분할 이름을 입력해 주세요.');
+ return {...data,teachers:[...data.teachers,clean]};
+}
+export function setDutyOverride(data:DemoData,date:string,name:string):DemoData{
+ if(!validDate(date)||dayDate(date).getDay()!==6)throw Error('토요일을 선택해 주세요.');
+ if(name&&!data.teachers.includes(name))throw Error('등록된 선생님을 선택해 주세요.');
+ const teacherOverrides={...data.teacherOverrides};
+ if(name)teacherOverrides[date]=name;else delete teacherOverrides[date];
+ return {...data,teacherOverrides};
 }
