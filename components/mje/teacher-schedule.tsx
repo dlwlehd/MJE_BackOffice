@@ -1,48 +1,35 @@
 'use client';
-
 import {useState} from 'react';
-import {ArrowUp,ArrowDown,GripVertical,Plus,Users,Save,X,ArrowUpRight} from 'lucide-react';
+import {ArrowUp,ArrowDown,Plus,Users,Save,X,ArrowUpRight} from 'lucide-react';
 import {Button} from '@/components/ui/button';
-import {Input} from '@/components/ui/input';
-import {type DemoData,teacherOrder,validateTeacherOrder,staffNames,saturday,shift,dayDate,iso,dateLabel} from '@/lib/model';
-import {DateNav,Pick,ErrorMessage,Status} from './shared';
+import {type DemoData,dutyTeacher,validateTeacherOrder,staffNames,saturday,shift,dateLabel} from '@/lib/model';
+import {TextField,Pick,ErrorMessage,Status} from './shared';
 
 export default function TeacherSchedule({data,onSave,onOpenMakeup,initialDate}:{data:DemoData;onSave:(date:string,teachers:string[])=>void;onOpenMakeup:(date:string)=>void;initialDate:string}){
- const [date,setDate]=useState(initialDate);
- const [drafts,setDrafts]=useState<Record<string,string[]>>({});
- const [picked,setPicked]=useState('');
- const [dragging,setDragging]=useState<string|null>(null);
- const [error,setError]=useState('');
- const [announcement,setAnnouncement]=useState('');
- const saved=teacherOrder(data,date),teachers=drafts[date]??saved;
- const dirty=JSON.stringify(saved)!==JSON.stringify(teachers);
+ const rule=[...data.teacherRotations].filter(r=>r.startDate<=initialDate).sort((a,b)=>b.startDate.localeCompare(a.startDate))[0];
+ const [date,setDate]=useState(initialDate),[teachers,setTeachers]=useState(rule?.teachers??[...staffNames]),[picked,setPicked]=useState(''),[error,setError]=useState('');
  const available=staffNames.filter(n=>!teachers.includes(n));
- const d=dayDate(date),first=saturday(iso(new Date(d.getFullYear(),d.getMonth(),1,12)));
- const saturdays=Array.from({length:5},(_,i)=>shift(first,i*7)).filter(s=>s.slice(0,7)===date.slice(0,7));
- const changeDate=(next:string)=>{try{validateTeacherOrder(next,[]);setDate(next);setPicked('');setError('');}catch(e){setError((e as Error).message)}};
- const update=(next:string[])=>{setDrafts(p=>({...p,[date]:next}));setError('');};
- function move(name:string,index:number){const next=teachers.filter(n=>n!==name);next.splice(index,0,name);update(next);setAnnouncement(`${name} 선생님을 ${index+1}번째로 이동했습니다.`);}
- function save(){try{validateTeacherOrder(date,teachers);onSave(date,teachers);setDrafts(p=>{const next={...p};delete next[date];return next;});setError('');setAnnouncement('담당 선생님 순서를 저장했습니다.');}catch(e){setError((e as Error).message)}}
+ const preview={teacherRotations:[...data.teacherRotations.filter(r=>r.startDate!==date),{startDate:date,teachers}]};
+ function move(index:number,to:number){const next=[...teachers];[next[index],next[to]]=[next[to],next[index]];setTeachers(next)}
+ function save(){try{validateTeacherOrder(date,teachers);onSave(date,teachers);setError('')}catch(e){setError((e as Error).message)}}
  return <>
-  <div className="page-heading"><div><h1>보강 스케줄</h1><p>토요일별 담당 선생님을 정하고, 배치 순서를 조정하세요.</p></div><Button onClick={save} disabled={!dirty}><Save/>스케줄 저장</Button></div>
-  <div className="toolbar"><DateNav label={`${date.replaceAll('-','.')} 토요일`} onPrev={()=>changeDate(shift(date,-7))} onNext={()=>changeDate(shift(date,7))} onToday={()=>changeDate(saturday())}/><Input className="date-input" aria-label="스케줄 토요일" type="date" value={date} onChange={e=>changeDate(e.target.value)}/></div>
+  <div className="page-heading"><div><h1>보강 스케줄</h1><p>토요일마다 한 명의 선생님이 담당하고, 정해진 순서대로 매주 교대합니다.</p></div><Button onClick={save}><Save/>로테이션 저장</Button></div>
   <div className="schedule-layout">
-   <section className="schedule-editor" aria-label="선생님 순서 배치">
-    <div className="schedule-section-title"><div><h2><Users size={18}/>담당 선생님 순서</h2><p>위아래 버튼이나 끌어 놓기로 순서를 바꿀 수 있습니다.</p></div><Status tone={dirty?'warning':'success'}>{dirty?'저장 전':'저장됨'}</Status></div>
+   <section className="schedule-editor" aria-label="주간 로테이션 설정">
+    <div className="schedule-section-title"><div><h2><Users size={18}/>교사 로테이션</h2><p>첫 번째 선생님부터 시작해 마지막 순서 후 다시 반복합니다.</p></div></div>
+    <TextField label="적용 시작 토요일" type="date" value={date} onChange={setDate}/>
     <ol className="teacher-order-list">
-     {teachers.map((name,index)=><li key={name} className={`teacher-order-row ${dragging===name?'dragging':''}`} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();if(dragging&&dragging!==name)move(dragging,index);setDragging(null)}}>
-      <span className="drag-handle" draggable onDragStart={e=>{setDragging(name);e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',name)}} onDragEnd={()=>setDragging(null)} title="끌어서 순서 변경"><GripVertical size={18}/></span>
-      <span className="teacher-rank">{index+1}</span><div className="teacher-row-name"><strong>{name} 선생님</strong><span>담당 학생 {new Set(data.makeups.filter(m=>m.date===date&&m.staff===name).map(m=>m.studentId)).size}명</span></div>
-      <div className="teacher-order-actions"><Button variant="ghost" size="icon" disabled={index===0} aria-label={`${name} 순서 올리기`} onClick={()=>move(name,index-1)}><ArrowUp/></Button><Button variant="ghost" size="icon" disabled={index===teachers.length-1} aria-label={`${name} 순서 내리기`} onClick={()=>move(name,index+1)}><ArrowDown/></Button><Button variant="ghost" size="icon" aria-label={`${name} 배치에서 제외`} onClick={()=>update(teachers.filter(n=>n!==name))}><X/></Button></div>
+     {teachers.map((name,index)=><li key={name} className="teacher-order-row">
+      <span className="teacher-rank">{index+1}</span><div className="teacher-row-name"><strong>{name} 선생님</strong><span>{index+1}주차 담당</span></div>
+      <div className="teacher-order-actions"><Button variant="ghost" size="icon" disabled={index===0} aria-label={`${name} 순서 올리기`} onClick={()=>move(index,index-1)}><ArrowUp/></Button><Button variant="ghost" size="icon" disabled={index===teachers.length-1} aria-label={`${name} 순서 내리기`} onClick={()=>move(index,index+1)}><ArrowDown/></Button><Button variant="ghost" size="icon" aria-label={`${name} 로테이션에서 제외`} onClick={()=>setTeachers(teachers.filter(n=>n!==name))}><X/></Button></div>
      </li>)}
     </ol>
-    {!teachers.length&&<div className="schedule-empty"><Users/><p>이 날짜에 배치된 선생님이 없습니다.</p><span>아래에서 담당 선생님을 추가해 주세요.</span></div>}
-    <div className="schedule-add"><Pick label="배치할 선생님" value={picked} onChange={setPicked} placeholder={available.length?'선생님 선택':'모든 선생님이 배치되었습니다'} options={available} className="grow"/><Button variant="outline" disabled={!picked||!available.includes(picked)} onClick={()=>{update([...teachers,picked]);setPicked('')}}><Plus/>추가</Button></div>
-    <p className="schedule-note">저장한 순서는 해당 날짜의 토요 보강 상단에 반영됩니다. 학생별 담당자와 예약은 그대로 유지됩니다.</p>
-    <ErrorMessage message={error}/><div aria-live="polite" className="sr-only">{announcement}</div>
-    <div className="schedule-editor-footer"><Button variant="ghost" onClick={()=>{setDrafts(p=>{const next={...p};delete next[date];return next;});setPicked('')}} disabled={!dirty}>변경 취소</Button><Button variant="outline" onClick={()=>onOpenMakeup(date)} disabled={dirty}>토요 보강 보기<ArrowUpRight/></Button><Button onClick={save} disabled={!dirty}>순서 저장</Button></div>
+    <div className="schedule-add"><Pick label="참여 선생님" value={picked} onChange={setPicked} placeholder={available.length?'선생님 선택':'모든 선생님이 참여합니다'} options={available} className="grow"/><Button variant="outline" disabled={!picked||!available.includes(picked)} onClick={()=>{setTeachers([...teachers,picked]);setPicked('')}}><Plus/>추가</Button></div>
+    <p className="schedule-note">시작일 이전의 배정은 유지됩니다. 이후에 이미 저장한 로테이션이 있다면 해당 시작일부터 그 순서가 적용됩니다. 보관된 기록은 변경되지 않습니다.</p>
+    <ErrorMessage message={error}/>
+    <div className="schedule-editor-footer"><Button variant="outline" onClick={()=>onOpenMakeup(initialDate)}>토요 보강 보기<ArrowUpRight/></Button><Button onClick={save}>로테이션 저장</Button></div>
    </section>
-   <aside className="schedule-month" aria-label="이달 토요일 배치"><h2>{d.getFullYear()}년 {d.getMonth()+1}월 배치</h2><p>날짜를 선택하면 담당 순서를 수정할 수 있습니다.</p><div className="schedule-date-list">{saturdays.map(s=>{const names=teacherOrder(data,s);const changed=drafts[s]&&JSON.stringify(drafts[s])!==JSON.stringify(names);return <button key={s} className={`schedule-date-item ${date===s?'active':''}`} onClick={()=>changeDate(s)}><div><strong>{dateLabel(s)}</strong>{changed?<Status tone="warning">저장 전</Status>:<span>{names.length}명</span>}</div><p>{names.length?names.join(' → '):'담당 선생님 미배정'}</p></button>})}</div></aside>
+   <aside className="schedule-month" aria-label="주간 담당 미리보기"><h2>앞으로 8주 미리보기</h2><p>저장할 순서를 미리 확인하세요. 하루 담당은 1명입니다.</p><div className="schedule-date-list">{Array.from({length:8},(_,i)=>shift(saturday(/^\d{4}-\d{2}-\d{2}$/.test(date)?date:initialDate),i*7)).map(s=><div key={s} className="schedule-date-item"><div><strong>{dateLabel(s)}</strong><Status tone="reserved">1명 담당</Status></div><p>{dutyTeacher(preview,s)||'미배정'} 선생님</p><small>현재 저장: {dutyTeacher(data,s)||'미배정'}</small></div>)}</div></aside>
   </div>
  </>;
 }
